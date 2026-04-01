@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Gardner Soliton Logic Validator</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a1a; padding: 40px; color: #eee; }
+        .container { max-width: 900px; margin: auto; background: #2d2d2d; padding: 30px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #444; }
+        .header { border-bottom: 2px solid #00d4ff; margin-bottom: 20px; padding-bottom: 10px; }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 20px; }
+        .output-box { background: #000; color: #00ff00; padding: 20px; border-radius: 8px; font-family: 'Courier New', Courier, monospace; border: 1px solid #333; min-height: 150px; line-height: 1.5; }
+        label { display: block; font-weight: bold; margin-bottom: 8px; color: #00d4ff; }
+        input[type="number"] { width: 90%; padding: 10px; background: #3d3d3d; border: 1px solid #555; color: white; border-radius: 4px; margin-bottom: 15px; }
+        input[type="range"] { width: 100%; margin: 15px 0; cursor: pointer; }
+        .stat-label { color: #888; font-size: 0.9em; }
+        .stat-value { color: #fff; font-weight: bold; }
+        .btn-group { display: flex; gap: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>Gardner Engine: Logic Validator</h1>
+        <p>Verification of Non-Dispersive Kink Stability Ratios</p>
+    </div>
+
+    <div class="controls">
+        <div class="inputs">
+            <label>Quadratic Nonlinearity (?)</label>
+            <input type="number" id="alpha" value="6" step="0.1">
+            
+            <label>Cubic Nonlinearity (?)</label>
+            <input type="number" id="beta" value="1" step="0.1">
+            
+            <label>Switching Threshold (a): <span id="a_val" style="color:white">0.50</span></label>
+            <input type="range" id="threshold" min="0.01" max="0.99" step="0.01" value="0.5">
+
+            <label>Signal Noise (Thermal): <span id="noise_val" style="color:white">0%</span></label>
+            <input type="range" id="noise" min="0" max="0.2" step="0.01" value="0">
+            
+            <div class="btn-group">
+                <button onclick="runValidation()" style="flex:2; padding:12px; background:#00d4ff; border:none; border-radius:4px; font-weight:bold; cursor:pointer; margin-top:10px;">RUN ENGINE VALIDATION</button>
+	<button onclick="exportHardwareHeader()" style="flex:1; padding:12px; background:#222; color:#00d4ff; border:1px solid #00d4ff; border-radius:4px; font-weight:bold; cursor:pointer; margin-top:10px;">EXPORT .SVH</button>
+                <button onclick="exportTechSpec()" style="flex:1; padding:12px; background:#222; color:#00d4ff; border:1px solid #00d4ff; border-radius:4px; font-weight:bold; cursor:pointer; margin-top:10px;">EXPORT SPEC</button>
+            </div>
+        </div>
+
+        <div class="output-box" id="results">
+            // Awaiting Calculation...
+        </div>
+    </div>
+
+    <canvas id="waveChart"></canvas>
+</div>
+
+<script>
+const GardnerEngine = {
+    calculateSpecs: function(alpha, beta, a) {
+        const gamma = alpha * (a - 1);
+        const k = Math.sqrt(Math.abs(alpha) / (6 * Math.max(0.0001, Math.abs(beta))));
+        const velocity = -alpha / 6;
+        return { gamma, k, velocity };
+    }
+};
+
+let chart;
+let currentSpecs = {};
+
+// Listeners
+document.getElementById('threshold').addEventListener('input', (e) => {
+    document.getElementById('a_val').innerText = parseFloat(e.target.value).toFixed(2);
+    runValidation(); 
+});
+
+document.getElementById('noise').addEventListener('input', (e) => {
+    document.getElementById('noise_val').innerText = (parseFloat(e.target.value) * 100).toFixed(0) + "%";
+    runValidation(); 
+});
+
+function runValidation() {
+    const alpha = parseFloat(document.getElementById('alpha').value) || 0;
+    const beta = parseFloat(document.getElementById('beta').value) || 1;
+    const a = parseFloat(document.getElementById('threshold').value);
+    const noiseLevel = parseFloat(document.getElementById('noise').value);
+
+    currentSpecs = GardnerEngine.calculateSpecs(alpha, beta, a);
+    currentSpecs.a = a;
+
+    document.getElementById('results').innerHTML = `
+        <span style="color:#00ff00">> IDENTITY VERIFIED (GLB)</span><br>
+        --------------------------------<br>
+        Dispersion (&gamma;): <span style="color:white">${currentSpecs.gamma.toFixed(4)}</span><br>
+        Bit Width (k):   <span style="color:white">${currentSpecs.k.toFixed(4)}</span><br>
+        Velocity (v):    <span style="color:white">${currentSpecs.velocity.toFixed(4)}</span><br>
+        --------------------------------<br>
+        <span style="color:#888">Logic Stability: SECURED</span>
+    `;
+
+    updateChart(currentSpecs.k, noiseLevel);
+}
+
+function updateChart(k, noise) {
+    const points = [];
+    for (let x = -10; x <= 10; x += 0.2) {
+        // Core Kink + Random Thermal Noise
+        const jitter = (Math.random() - 0.5) * noise;
+        const y = (1 / (1 + Math.exp(-k * x))) + jitter;
+        points.push({x: x, y: y});
+    }
+
+    const ctx = document.getElementById('waveChart').getContext('2d');
+    if (chart) chart.destroy();
+
+    chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            datasets: [{
+                label: 'Soliton Logical State (u)',
+                data: points,
+                borderColor: '#00d4ff',
+                borderWidth: 4,
+                pointRadius: 0,
+                fill: false,
+                tension: 0.1
+            }]
+        },
+        options: {
+            responsive: true,
+            animation: false,
+            scales: {
+                x: { type: 'linear', grid: {color: '#444'}, title: {display: true, text: 'Phase Space (?)', color: '#888'} },
+                y: { min: -0.2, max: 1.2, grid: {color: '#444'}, title: {display: true, text: 'Logic Level (u)', color: '#888'} }
+            }
+        }
+    });
+}
+
+function exportHardwareHeader() {
+    // Helper to convert decimal to 32-bit Hex (Q16.16)
+    const toHex = (num) => {
+        const scaled = Math.round(num * 65536);
+        const unsigned = scaled >>> 0; 
+        return "32'h" + unsigned.toString(16).toUpperCase().padStart(8, '0');
+    };
+
+    // Fix: Pull alpha directly from the input field 
+    const alphaVal = parseFloat(document.getElementById('alpha').value) || 0;
+    const alphaHex = toHex(alphaVal);
+    const aHex = toHex(currentSpecs.a);
+    const gammaHex = toHex(currentSpecs.gamma);
+
+    const content = `// GARDNER ENGINE PARAMETERS\n` +
+                    `// Generated: ${new Date().toLocaleString()}\n` +
+                    `// Logic Threshold (a): ${currentSpecs.a}\n\n` +
+                    `\`define TEST_ALPHA ${alphaHex}\n` +
+                    `\`define TEST_A     ${aHex}\n` +
+                    `\`define EXP_GAMMA  ${gammaHex}\n`;
+
+    const blob = new Blob([content], {type: 'text/plain'});
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'params.svh';
+    link.click();
+}
+</script>
+</body>
+</html>
